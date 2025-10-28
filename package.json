@@ -1,0 +1,23 @@
+{
+  "name": "minihelpdesk-root",
+  "version": "1.0.0",
+  "description": "MiniHelpDesk - Project Management Tool",
+  "scripts": {
+    "install-server": "cd server && npm install",
+    "install-client": "cd client && npm install",
+    "install-all": "npm run install-server && npm run install-client",
+    "start": "cd server && npm start",
+    "start:client": "cd client && npm start",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm start"
+  },
+  "keywords": [
+    "project-management",
+    "task-management",
+    "kanban",
+    "react",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT"
+}
