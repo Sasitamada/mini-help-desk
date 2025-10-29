@@ -18,6 +18,9 @@ const Header = () => {
   };
 
   const getPageTitle = () => {
+    if (location.pathname.startsWith('/workspaces/')) {
+      return 'Workspace Details';
+    }
     switch(location.pathname) {
       case '/dashboard': return 'Dashboard';
       case '/workspaces': return 'Workspaces';

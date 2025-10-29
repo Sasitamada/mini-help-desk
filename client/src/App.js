@@ -11,6 +11,7 @@ import ProjectView from './pages/ProjectView';
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Settings from './pages/Settings';
+import WorkspaceDetails from './pages/WorkspaceDetails';
 
 // Main App Layout Component
 const AppLayout = ({ children }) => (
@@ -43,6 +44,11 @@ function App() {
         <Route path="/workspaces" element={
           <AppLayout>
             <WorkspaceList />
+          </AppLayout>
+        } />
+        <Route path="/workspaces/:workspaceId" element={
+          <AppLayout>
+            <WorkspaceDetails />
           </AppLayout>
         } />
         

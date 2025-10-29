@@ -29,6 +29,9 @@ const Sidebar = () => {
 
   const handleWorkspaceClick = (workspace) => {
     setActiveItem(workspace.id);
+    if (workspace?.id) {
+      navigate(`/workspaces/${workspace.id}`);
+    }
   };
 
   const handleDashboardClick = () => {
@@ -78,7 +81,7 @@ const Sidebar = () => {
             workspaces.map(workspace => (
               <div
                 key={workspace.id}
-                className={`workspace-item ${activeItem === workspace.id ? 'active' : ''}`}
+                className={`workspace-item ${location.pathname === `/workspaces/${workspace.id}` ? 'active' : ''}`}
                 onClick={() => handleWorkspaceClick(workspace)}
               >
                 <div 
