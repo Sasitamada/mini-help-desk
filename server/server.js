@@ -102,6 +102,17 @@ async function createTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_chat_messages (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        author VARCHAR(255),
+        message TEXT,
+        attachments JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     
     console.log('Database tables created or already exist');
   } catch (error) {
@@ -120,6 +131,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/comments', require('./routes/comments'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/workspace-chat', require('./routes/workspaceChat'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

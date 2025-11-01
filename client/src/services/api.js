@@ -47,6 +47,17 @@ export const commentsAPI = {
   delete: (id) => api.delete(`/comments/${id}`),
 };
 
+// Workspace Chat
+export const workspaceChatAPI = {
+  getMessages: (workspaceId) => api.get(`/workspace-chat/${workspaceId}`),
+  sendMessage: (workspaceId, formData) => api.post(`/workspace-chat/${workspaceId}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
+  getAiSuggestion: (workspaceId, prompt) => api.post(`/workspace-chat/${workspaceId}/ai`, { prompt }),
+};
+
 // Auth
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),

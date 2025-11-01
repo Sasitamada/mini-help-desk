@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { workspacesAPI, projectsAPI, tasksAPI } from '../services/api';
 import TaskModal from '../components/TaskModal';
+import WorkspaceChat from '../components/WorkspaceChat';
 
 const WorkspaceDetails = () => {
   const { workspaceId } = useParams();
@@ -374,6 +375,9 @@ const WorkspaceDetails = () => {
           </div>
         </div>
       )}
+
+      {/* Workspace Chat */}
+      <WorkspaceChat workspaceId={workspaceId} />
 
       {/* Add Task Modal */}
       {showAddTaskModal && (
