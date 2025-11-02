@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 
 // Register
 router.post('/register', async (req, res) => {
@@ -16,10 +17,13 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create user (in production, hash password)
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
     const result = await req.app.locals.pool.query(
-      'INSERT INTO users (username, email, password, full_name) VALUES ($1, $2, $3, $4) RETURNING *',
-      [username, email, password, fullName]
+      'INSERT INTO users (username, email, password, full_name) VALUES ($1, $2, $3, $4) RETURNING id, username, email, full_name, avatar, bio, created_at',
+      [username, email, hashedPassword, fullName]
     );
 
     const user = result.rows[0];
@@ -29,7 +33,9 @@ router.post('/register', async (req, res) => {
         id: user.id, 
         username: user.username, 
         email: user.email,
-        fullName: user.full_name 
+        fullName: user.full_name,
+        avatar: user.avatar,
+        bio: user.bio
       },
       token: 'dummy-token-' + user.id
     });
@@ -47,18 +53,37 @@ router.post('/login', async (req, res) => {
       [email]
     );
     
-    if (result.rows.length === 0 || result.rows[0].password !== password) {
+    if (result.rows.length === 0) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = result.rows[0];
+    
+    // Check password (handle both hashed and plain for migration)
+    const isValid = await bcrypt.compare(password, user.password) || user.password === password;
+    
+    if (!isValid) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // If password was plain, hash it for future
+    if (user.password === password && password.length < 60) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await req.app.locals.pool.query(
+        'UPDATE users SET password = $1 WHERE id = $2',
+        [hashedPassword, user.id]
+      );
+    }
+
     res.json({ 
       message: 'Login successful', 
       user: { 
         id: user.id, 
         username: user.username, 
         email: user.email, 
-        fullName: user.full_name 
+        fullName: user.full_name,
+        avatar: user.avatar,
+        bio: user.bio
       },
       token: 'dummy-token-' + user.id
     });

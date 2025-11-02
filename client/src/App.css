@@ -33,7 +33,6 @@ body {
   background: #f7f8f9;
 }
 
-/* Header Styles - ClickUp Inspired */
 .header {
   background: #ffffff;
   border-bottom: 1px solid #e4e6e8;
@@ -324,7 +323,6 @@ body {
   box-shadow: 0 0 0 3px rgba(107, 92, 230, 0.1);
 }
 
-/* Kanban Styles - Enhanced */
 .kanban-board {
   display: flex;
   gap: 20px;

@@ -8,14 +8,26 @@ const ProjectView = () => {
   const { projectId } = useParams();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [filteredTasks, setFilteredTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [filters, setFilters] = useState({
+    search: '',
+    status: '',
+    priority: '',
+    assignedTo: '',
+    tag: ''
+  });
 
   useEffect(() => {
     loadProject();
     loadTasks();
   }, [projectId]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [tasks, filters]);
 
   const loadProject = async () => {
     try {
@@ -28,7 +40,14 @@ const ProjectView = () => {
 
   const loadTasks = async () => {
     try {
-      const response = await tasksAPI.getAll({ projectId });
+      const params = { projectId };
+      if (filters.search) params.search = filters.search;
+      if (filters.status) params.status = filters.status;
+      if (filters.priority) params.priority = filters.priority;
+      if (filters.assignedTo) params.assignedTo = filters.assignedTo;
+      if (filters.tag) params.tag = filters.tag;
+      
+      const response = await tasksAPI.getAll(params);
       setTasks(response.data);
     } catch (error) {
       console.error('Error loading tasks:', error);
@@ -37,12 +56,48 @@ const ProjectView = () => {
     }
   };
 
+  const applyFilters = () => {
+    let filtered = [...tasks];
+
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(task => 
+        task.title?.toLowerCase().includes(searchLower) ||
+        task.description?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (filters.status) {
+      filtered = filtered.filter(task => task.status === filters.status);
+    }
+
+    if (filters.priority) {
+      filtered = filtered.filter(task => task.priority === filters.priority);
+    }
+
+    if (filters.assignedTo) {
+      filtered = filtered.filter(task => task.assigned_to === parseInt(filters.assignedTo));
+    }
+
+    if (filters.tag) {
+      filtered = filtered.filter(task => {
+        const tags = task.tags ? (Array.isArray(task.tags) ? task.tags : JSON.parse(task.tags)) : [];
+        return tags.some(t => t.toLowerCase().includes(filters.tag.toLowerCase()));
+      });
+    }
+
+    setFilteredTasks(filtered);
+  };
+
   const handleCreateTask = async (taskData) => {
     try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
       await tasksAPI.create({
         ...taskData,
         project: projectId,
-        workspace: project?.workspace?._id || project?.workspace
+        workspace: project?.workspace_id || project?.workspace,
+        createdBy: user.id,
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null
       });
       loadTasks();
       setShowCreateModal(false);
@@ -53,7 +108,12 @@ const ProjectView = () => {
 
   const handleUpdateTask = async (taskId, updates) => {
     try {
-      await tasksAPI.update(taskId, updates);
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await tasksAPI.update(taskId, {
+        ...updates,
+        userId: user.id,
+        dueDate: updates.dueDate ? new Date(updates.dueDate).toISOString() : null
+      });
       loadTasks();
       setSelectedTask(null);
     } catch (error) {
@@ -63,7 +123,8 @@ const ProjectView = () => {
 
   const handleDeleteTask = async (taskId) => {
     try {
-      await tasksAPI.delete(taskId);
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await tasksAPI.delete(taskId, user.id);
       loadTasks();
     } catch (error) {
       console.error('Error deleting task:', error);
@@ -79,13 +140,18 @@ const ProjectView = () => {
     }
   };
 
-  const handleSearch = async (query) => {
-    try {
-      const response = await tasksAPI.getAll({ projectId, search: query });
-      setTasks(response.data);
-    } catch (error) {
-      console.error('Error searching tasks:', error);
-    }
+  const handleFilterChange = (key, value) => {
+    setFilters({ ...filters, [key]: value });
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      status: '',
+      priority: '',
+      assignedTo: '',
+      tag: ''
+    });
   };
 
   if (loading) {
@@ -110,22 +176,75 @@ const ProjectView = () => {
         </button>
       </div>
 
-      <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
-        <select className="form-select" style={{ width: 'auto' }}>
-          <option>All Tasks</option>
-          <option>My Tasks</option>
-          <option>High Priority</option>
-        </select>
+      <div style={{ 
+        marginBottom: '24px', 
+        padding: '16px',
+        background: '#f7f8f9',
+        borderRadius: '8px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '12px',
+        alignItems: 'center'
+      }}>
         <input 
           type="text" 
           className="form-input" 
           placeholder="Search tasks..." 
-          style={{ flex: '1', maxWidth: '300px' }}
+          value={filters.search}
+          onChange={(e) => handleFilterChange('search', e.target.value)}
+          style={{ flex: '1', minWidth: '200px', maxWidth: '300px' }}
         />
+        
+        <select 
+          className="form-select" 
+          value={filters.status}
+          onChange={(e) => handleFilterChange('status', e.target.value)}
+          style={{ width: 'auto', minWidth: '120px' }}
+        >
+          <option value="">All Status</option>
+          <option value="todo">To Do</option>
+          <option value="inprogress">In Progress</option>
+          <option value="done">Done</option>
+        </select>
+
+        <select 
+          className="form-select" 
+          value={filters.priority}
+          onChange={(e) => handleFilterChange('priority', e.target.value)}
+          style={{ width: 'auto', minWidth: '120px' }}
+        >
+          <option value="">All Priority</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+
+        <input
+          type="text"
+          className="form-input"
+          placeholder="Filter by tag..."
+          value={filters.tag}
+          onChange={(e) => handleFilterChange('tag', e.target.value)}
+          style={{ width: 'auto', minWidth: '150px' }}
+        />
+
+        {(filters.search || filters.status || filters.priority || filters.tag || filters.assignedTo) && (
+          <button 
+            className="btn btn-secondary"
+            onClick={clearFilters}
+            style={{ fontSize: '12px', padding: '8px 12px' }}
+          >
+            Clear Filters
+          </button>
+        )}
+
+        <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#6c757d' }}>
+          Showing {filteredTasks.length} of {tasks.length} tasks
+        </div>
       </div>
 
       <KanbanBoard 
-        tasks={tasks}
+        tasks={filteredTasks}
         onTaskClick={(task) => setSelectedTask(task)}
         onTaskDrop={handleTaskDrop}
       />
@@ -142,9 +261,9 @@ const ProjectView = () => {
         <TaskModal
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
-          onSave={(updates) => handleUpdateTask(selectedTask._id, updates)}
+          onSave={(updates) => handleUpdateTask(selectedTask.id || selectedTask._id, updates)}
           onDelete={() => {
-            handleDeleteTask(selectedTask._id);
+            handleDeleteTask(selectedTask.id || selectedTask._id);
             setSelectedTask(null);
           }}
           project={project}

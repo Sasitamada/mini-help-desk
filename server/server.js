@@ -73,10 +73,21 @@ async function createTables() {
         created_by INTEGER,
         subtasks JSONB DEFAULT '[]',
         attachments JSONB DEFAULT '[]',
+        tags JSONB DEFAULT '[]',
         custom_fields JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+    
+    // Add tags column to tasks if it doesn't exist
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='tags') THEN
+          ALTER TABLE tasks ADD COLUMN tags JSONB DEFAULT '[]';
+        END IF;
+      END $$;
     `);
     
     await client.query(`
@@ -99,6 +110,80 @@ async function createTables() {
         password VARCHAR(255) NOT NULL,
         full_name VARCHAR(255),
         avatar VARCHAR(500),
+        bio TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Add new columns to users table if they don't exist
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='bio') THEN
+          ALTER TABLE users ADD COLUMN bio TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='updated_at') THEN
+          ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        END IF;
+      END $$;
+    `);
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_members (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        role VARCHAR(50) DEFAULT 'member',
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(workspace_id, user_id)
+      )
+    `);
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_invitations (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        invited_by INTEGER REFERENCES users(id),
+        role VARCHAR(50) DEFAULT 'member',
+        token VARCHAR(255) UNIQUE NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP
+      )
+    `);
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_tags (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        tag VARCHAR(100) NOT NULL,
+        color VARCHAR(50) DEFAULT '#4a9eff',
+        UNIQUE(task_id, tag)
+      )
+    `);
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_history (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id),
+        action VARCHAR(100) NOT NULL,
+        field_name VARCHAR(100),
+        old_value TEXT,
+        new_value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_reminders (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id),
+        reminder_date TIMESTAMP NOT NULL,
+        notified BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -131,6 +216,8 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/comments', require('./routes/comments'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/workspace-invitations', require('./routes/workspaceInvitations'));
 app.use('/api/workspace-chat', require('./routes/workspaceChat'));
 
 // Error handling middleware
@@ -139,7 +226,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!', error: err.message });
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
