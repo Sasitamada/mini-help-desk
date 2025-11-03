@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import DarkModeToggle from './DarkModeToggle';
 
 const Header = () => {
   const navigate = useNavigate();
@@ -36,7 +37,8 @@ const Header = () => {
           {getPageTitle()}
         </div>
       </div>
-      <div className="header-actions">
+      <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <DarkModeToggle />
         <div style={{ position: 'relative' }}>
           {showSearch ? (
             <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px' }}>

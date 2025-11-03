@@ -1,0 +1,9 @@
+@echo off
+echo Clearing React cache...
+if exist node_modules\.cache rmdir /s /q node_modules\.cache
+echo Cache cleared!
+echo.
+echo Starting React dev server...
+echo Please wait...
+npm start
+

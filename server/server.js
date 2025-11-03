@@ -2,9 +2,18 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 require('dotenv').config();
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
+});
 
 // Middleware
 app.use(cors());
@@ -226,7 +235,34 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!', error: err.message });
 });
 
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  // Join task room for real-time updates
+  socket.on('join-task', (taskId) => {
+    socket.join(`task-${taskId}`);
+  });
+
+  // Leave task room
+  socket.on('leave-task', (taskId) => {
+    socket.leave(`task-${taskId}`);
+  });
+
+  // Join workspace room
+  socket.on('join-workspace', (workspaceId) => {
+    socket.join(`workspace-${workspaceId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+// Make io available to routes
+app.locals.io = io;
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

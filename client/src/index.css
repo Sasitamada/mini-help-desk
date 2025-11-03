@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -10,4 +14,25 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Dark mode styles */
+.dark {
+  background-color: #1a1a1a;
+  color: #e5e5e5;
+}
+
+/* React Quill styles */
+.ql-editor {
+  min-height: 150px;
+}
+
+.dark .ql-editor {
+  color: #e5e5e5;
+  background: #2a2a2a;
+}
+
+.dark .ql-toolbar {
+  background: #2a2a2a;
+  border-color: #3a3a3a;
 }

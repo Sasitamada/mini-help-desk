@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { commentsAPI, tasksAPI, usersAPI } from '../services/api';
+import RichTextComment from './RichTextComment';
+import useSocket from '../hooks/useSocket';
 
 const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
   const [formData, setFormData] = useState({
@@ -23,6 +26,7 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
   const [reminderDate, setReminderDate] = useState('');
   const [users, setUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('details');
+  const { socket } = useSocket();
 
   useEffect(() => {
     if (task) {
@@ -43,9 +47,35 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
       setAttachments(taskAttachments);
       loadTaskDetails();
       loadComments();
+      
+      // Join task room for real-time updates
+      if (socket && task.id) {
+        socket.emit('join-task', task.id);
+      }
     }
     loadUsers();
-  }, [task]);
+    
+    return () => {
+      if (socket && task?.id) {
+        socket.emit('leave-task', task.id);
+      }
+    };
+  }, [task, socket]);
+  
+  // Listen for real-time comment updates
+  useEffect(() => {
+    if (!socket || !task?.id) return;
+    
+    const handleNewComment = (comment) => {
+      setComments(prev => [comment, ...prev]);
+    };
+    
+    socket.on('new-comment', handleNewComment);
+    
+    return () => {
+      socket.off('new-comment', handleNewComment);
+    };
+  }, [socket, task]);
 
   const loadTaskDetails = async () => {
     if (task?.id) {
@@ -163,17 +193,16 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
     }
   };
 
-  const handleAddComment = async () => {
-    if (newComment.trim() && task?.id) {
+  const handleAddComment = async (content) => {
+    if (content.trim() && task?.id) {
       try {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         await commentsAPI.create({
-          content: newComment,
+          content: content,
           task: task.id,
           author: user.id
         });
-        setNewComment('');
-        loadComments();
+        // Comment will be added via WebSocket
       } catch (error) {
         console.error('Error adding comment:', error);
       }
@@ -196,15 +225,36 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', width: '95%', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-header">
-          <div className="modal-title">{task ? 'Edit Task' : 'Create New Task'}</div>
-          <button className="close-btn" onClick={onClose}>×</button>
-        </div>
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ type: 'spring', duration: 0.3 }}
+          className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              {task ? 'Edit Task' : 'Create New Task'}
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl leading-none"
+            >
+              ×
+            </button>
+          </div>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e4e6e8', padding: '0 24px' }}>
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700 px-6">
           <button
             onClick={() => setActiveTab('details')}
             style={{
@@ -253,7 +303,7 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
           )}
         </div>
 
-        <div style={{ overflowY: 'auto', flex: 1, padding: '24px' }}>
+          <div className="overflow-y-auto flex-1 p-6">
           {activeTab === 'details' && (
             <>
               <div className="form-group">
@@ -480,33 +530,50 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
           )}
 
           {activeTab === 'comments' && task && (
-            <div>
-              <div style={{ marginBottom: '16px', maxHeight: '400px', overflowY: 'auto' }}>
-                {comments.map(comment => (
-                  <div key={comment.id || comment._id} style={{ 
-                    padding: '12px',
-                    background: '#f7f8f9',
-                    borderRadius: '6px',
-                    marginBottom: '8px'
-                  }}>
-                    <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>
-                      {comment.author?.full_name || comment.author?.username || 'User'} - {formatDate(comment.created_at)}
-                    </div>
-                    <div style={{ fontSize: '14px' }}>{comment.content}</div>
-                  </div>
-                ))}
+            <div className="space-y-4">
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                <AnimatePresence>
+                  {comments.map((comment, idx) => (
+                    <motion.div
+                      key={comment.id || comment._id || idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {comment.author?.avatar ? (
+                          <img 
+                            src={`http://localhost:5000${comment.author.avatar}`} 
+                            alt={comment.author.username} 
+                            className="w-6 h-6 rounded-full" 
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
+                            {(comment.author?.full_name || comment.author?.username || 'U').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
+                          {comment.author?.full_name || comment.author?.username || 'User'}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-500">
+                          {formatDate(comment.created_at)}
+                        </span>
+                      </div>
+                      <div 
+                        className="text-sm text-gray-900 dark:text-gray-100"
+                        dangerouslySetInnerHTML={{ __html: comment.content }}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
-                  placeholder="Add a comment..."
-                />
-                <button className="btn btn-primary" onClick={handleAddComment}>Post</button>
-              </div>
+              <RichTextComment 
+                taskId={task.id} 
+                onSave={handleAddComment}
+                placeholder="Add a comment... Use @ to mention someone"
+              />
             </div>
           )}
 
@@ -542,23 +609,35 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
           )}
         </div>
 
-        <div className="button-group" style={{ justifyContent: 'space-between', marginTop: '24px', padding: '16px 24px', borderTop: '1px solid #e4e6e8' }}>
-          <div>
-            {task && onDelete && (
-              <button className="btn" style={{ background: '#fee', color: '#c72525' }} onClick={onDelete}>
-                Delete Task
+          <div className="flex justify-between items-center mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 px-6 pb-6">
+            <div>
+              {task && onDelete && (
+                <button
+                  className="px-4 py-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+                  onClick={onDelete}
+                >
+                  Delete Task
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                onClick={onClose}
+              >
+                Cancel
               </button>
-            )}
+              <button
+                className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+                onClick={handleSubmit}
+              >
+                {task ? 'Update' : 'Create'} Task
+              </button>
+            </div>
           </div>
-          <div>
-            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSubmit}>
-              {task ? 'Update' : 'Create'} Task
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
