@@ -8,17 +8,21 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
+
+// ✅ Enable CORS for your frontend domain
+app.use(cors({
+  origin: 'https://mini-help-desk-1.onrender.com',
+  credentials: true
+}));
+
+// ✅ Socket.IO CORS setup
 const io = new Server(server, {
   cors: {
     origin: 'https://mini-help-desk-1.onrender.com',
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
   }
 });
-
-// ✅ Set correct CORS for API
-app.use(cors({
-  origin: 'https://mini-help-desk-1.onrender.com'
-}));
 
 // Middleware
 app.use(express.json());
@@ -27,16 +31,10 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// PostgreSQL connection
+// ✅ Connect to PostgreSQL using DATABASE_URL from env
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
 pool.connect()
@@ -46,6 +44,7 @@ pool.connect()
   })
   .catch(err => console.error('Database connection error:', err));
 
+// ✅ Create tables function
 async function createTables() {
   const client = await pool.connect();
   try {
@@ -88,7 +87,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!', error: err.message });
 });
 
-// Sockets
+// Socket.IO
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
