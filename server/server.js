@@ -25,11 +25,16 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to PostgreSQL/Neon
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_bnDM2fCkcxQ5@ep-royal-wave-a8ux8dyh-pooler.eastus2.azure.neon.tech/neondb?sslmode=require',
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   ssl: {
     rejectUnauthorized: false
   }
 });
+
 
 pool.connect()
   .then(() => {
@@ -262,7 +267,7 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.locals.io = io;
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
