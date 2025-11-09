@@ -107,19 +107,34 @@ router.put('/:id/members/:userId', async (req, res) => {
   }
 });
 
-// Create workspace
+// Create workspace (with logging and fallback for owner)
 router.post('/', async (req, res) => {
   try {
+    console.log('Incoming workspace data:', req.body); // 👈 LOG incoming request
+
     const { name, description, color, owner } = req.body;
-    const { rows } = await req.app.locals.pool.query(
-      'INSERT INTO workspaces (name, description, color, owner) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, description, color || '#7b68ee', owner]
-    );
+
+    // Basic validation
+    if (!name || !description) {
+      return res.status(400).json({ message: 'Name and description are required' });
+    }
+
+    const insertQuery = owner
+      ? 'INSERT INTO workspaces (name, description, color, owner) VALUES ($1, $2, $3, $4) RETURNING *'
+      : 'INSERT INTO workspaces (name, description, color) VALUES ($1, $2, $3) RETURNING *';
+
+    const insertValues = owner
+      ? [name, description, color || '#7b68ee', owner]
+      : [name, description, color || '#7b68ee'];
+
+    const { rows } = await req.app.locals.pool.query(insertQuery, insertValues);
     res.status(201).json(rows[0]);
   } catch (error) {
+    console.error('Create workspace error:', error);
     res.status(400).json({ message: error.message });
   }
 });
+
 
 // Update workspace
 router.put('/:id', async (req, res) => {
