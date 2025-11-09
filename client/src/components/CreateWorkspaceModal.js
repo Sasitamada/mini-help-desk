@@ -9,7 +9,11 @@ const CreateWorkspaceModal = ({ onClose, onSave }) => {
 
   const handleSubmit = () => {
     if (formData.name.trim()) {
-      onSave(formData);
+      const dataWithOwner = {
+        ...formData,
+        owner: 1 // ✅ TEMPORARY: Replace with actual logged-in user ID if available
+      };
+      onSave(dataWithOwner);
     }
   };
 
