@@ -9,16 +9,21 @@ const CreateWorkspaceModal = ({ onClose, onSave }) => {
 
   const handleSubmit = () => {
     if (formData.name.trim()) {
-      const dataWithOwner = {
+      const owner = localStorage.getItem('userId'); // Retrieve user ID from localStorage
+      if (!owner) {
+        alert('User ID not found. Please log in again.');
+        return;
+      }
+
+      onSave({
         ...formData,
-        owner: 1 // ✅ TEMPORARY: Replace with actual logged-in user ID if available
-      };
-      onSave(dataWithOwner);
+        owner
+      });
     }
   };
 
   const colors = [
-    '#7b68ee', '#4a9eff', '#2ecc71', '#e74c3c', 
+    '#7b68ee', '#4a9eff', '#2ecc71', '#e74c3c',
     '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'
   ];
 
