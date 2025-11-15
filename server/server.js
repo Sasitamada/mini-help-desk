@@ -1,3 +1,4 @@
+// /server/server.js
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -9,16 +10,24 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Enable CORS for your frontend domain
+// Determine environment / production detection
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
+const isProduction = (process.env.NODE_ENV === 'production') || hasDatabaseUrl;
+
+// CORS - allow frontend host in production, localhost in dev
+const frontendOrigin = isProduction
+  ? 'https://mini-help-desk-1.onrender.com'
+  : 'http://localhost:3000';
+
 app.use(cors({
-  origin: 'https://mini-help-desk-1.onrender.com',
+  origin: frontendOrigin,
   credentials: true
 }));
 
-// ✅ Socket.IO CORS setup
+// Socket.IO CORS setup
 const io = new Server(server, {
   cors: {
-    origin: 'https://mini-help-desk-1.onrender.com',
+    origin: frontendOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
   }
@@ -31,11 +40,24 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ✅ Connect to PostgreSQL using DATABASE_URL from env
+// Build connection string from DATABASE_URL OR DB_* env vars
+const connectionString = process.env.DATABASE_URL || (() => {
+  const user = process.env.DB_USER || 'postgres';
+  const password = process.env.DB_PASSWORD || '';
+  const host = process.env.DB_HOST || 'localhost';
+  const port = process.env.DB_PORT || '5432';
+  const dbName = process.env.DB_NAME || 'postgres';
+  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${dbName}`;
+})();
+
+// Pool config: disable SSL for local, enable minimal SSL for production managed DBs
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  connectionString,
+  ssl: isProduction ? { rejectUnauthorized: false } : false
 });
+
+console.log('DB connection mode:', isProduction ? 'production (SSL enabled)' : 'development (SSL disabled)');
+console.log('Using frontend origin:', frontendOrigin);
 
 pool.connect()
   .then(() => {
@@ -44,23 +66,152 @@ pool.connect()
   })
   .catch(err => console.error('Database connection error:', err));
 
-// ✅ Create tables function
+// Create tables function with concrete schemas
 async function createTables() {
   const client = await pool.connect();
   try {
-    await client.query(`CREATE TABLE IF NOT EXISTS workspaces (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS projects (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS tasks (...)`);
-    await client.query(`DO $$ BEGIN IF NOT EXISTS (...) THEN ALTER TABLE tasks ADD COLUMN tags JSONB DEFAULT '[]'; END IF; END $$;`);
-    await client.query(`CREATE TABLE IF NOT EXISTS comments (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS users (...)`);
-    await client.query(`DO $$ BEGIN IF NOT EXISTS (...) THEN ALTER TABLE users ADD COLUMN bio TEXT; END IF; IF NOT EXISTS (...) THEN ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP; END IF; END $$;`);
-    await client.query(`CREATE TABLE IF NOT EXISTS workspace_members (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS workspace_invitations (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS task_tags (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS task_history (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS task_reminders (...)`);
-    await client.query(`CREATE TABLE IF NOT EXISTS workspace_chat_messages (...)`);
+    // 1. users
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id BIGSERIAL PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        full_name VARCHAR(255),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        bio TEXT,
+        role VARCHAR(50) DEFAULT 'member',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 2. workspaces
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        owner_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 3. workspace_members
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_members (
+        id BIGSERIAL PRIMARY KEY,
+        workspace_id BIGINT REFERENCES workspaces(id) ON DELETE CASCADE,
+        user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+        role VARCHAR(50) DEFAULT 'member',
+        joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (workspace_id, user_id)
+      );
+    `);
+
+    // 4. workspace_invitations
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_invitations (
+        id BIGSERIAL PRIMARY KEY,
+        workspace_id BIGINT REFERENCES workspaces(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        invited_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        token VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 5. projects
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id BIGSERIAL PRIMARY KEY,
+        workspace_id BIGINT REFERENCES workspaces(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 6. tasks
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id BIGSERIAL PRIMARY KEY,
+        project_id BIGINT REFERENCES projects(id) ON DELETE CASCADE,
+        workspace_id BIGINT REFERENCES workspaces(id) ON DELETE CASCADE,
+        title VARCHAR(500) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'todo',
+        priority VARCHAR(50) DEFAULT 'normal',
+        assignee_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        reporter_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        due_date TIMESTAMP WITH TIME ZONE,
+        tags JSONB DEFAULT '[]'::jsonb,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 7. task_tags (optional mapping table if you want tag normalization)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_tags (
+        id BIGSERIAL PRIMARY KEY,
+        task_id BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+        tag VARCHAR(100) NOT NULL,
+        UNIQUE (task_id, tag)
+      );
+    `);
+
+    // 8. comments
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS comments (
+        id BIGSERIAL PRIMARY KEY,
+        task_id BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        body TEXT NOT NULL,
+        attachments JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 9. task_history
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_history (
+        id BIGSERIAL PRIMARY KEY,
+        task_id BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        change JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 10. task_reminders
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_reminders (
+        id BIGSERIAL PRIMARY KEY,
+        task_id BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+        remind_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        method VARCHAR(50) DEFAULT 'email',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 11. workspace_chat_messages
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_chat_messages (
+        id BIGSERIAL PRIMARY KEY,
+        workspace_id BIGINT REFERENCES workspaces(id) ON DELETE CASCADE,
+        user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        message TEXT NOT NULL,
+        attachments JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     console.log('Database tables created or already exist');
   } catch (error) {
     console.error('Error creating tables:', error);
@@ -71,7 +222,7 @@ async function createTables() {
 
 app.locals.pool = pool;
 
-// Routes
+// Routes - adjust these requires if route files aren't present yet
 app.use('/api/workspaces', require('./routes/workspaces'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));
@@ -121,7 +272,7 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5050;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
