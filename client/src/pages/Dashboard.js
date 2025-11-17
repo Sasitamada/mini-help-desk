@@ -211,7 +211,7 @@ const Dashboard = () => {
                 ))}
               </Pie>
               <Tooltip />
-            </PieChart>
+            </PieChart> 
           </ResponsiveContainer>
         </motion.div>
 
